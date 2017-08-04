@@ -40,8 +40,8 @@ static const char *conf_socks5_pass_str = "SOCKS5Password";
 static const char *conf_allow_inbound_str = "AllowInbound";
 static const char *conf_allow_outbound_localhost_str = "AllowOutboundLocalhost";
 static const char *conf_isolate_pid_str = "IsolatePID";
-static const char *conf_port_list_type_str = "PotsType";
-static const char *conf_port_list_str = "PotsList";
+static const char *conf_port_list_type_str = "PortsType";
+static const char *conf_port_list_str = "PortsList";
 
 /*
  * Once this value reaches 2, it means both user and password for a SOCKS5
@@ -479,10 +479,10 @@ int conf_file_set_port_list_type(const char *val, struct configuration *config)
 	if (ret == 0) {
 		config->ports.type = 0;
 		DBG("[config] Ports list disabled.");
-    } else if (ret == 1)
+    } else if (ret == 1) {
 		config->ports.type = 1;
 		DBG("[config] Ports white list enabled.");
-    } else if (ret == 2)
+    } else if (ret == 2) {
 		config->ports.type = 2;
 		DBG("[config] Ports black list enabled.");
 	} else {
@@ -496,23 +496,68 @@ int conf_file_set_port_list_type(const char *val, struct configuration *config)
 ATTR_HIDDEN
 int conf_file_add_ports_range(struct ports_list *ports, unsigned short beg, unsigned short end)
 {
+    size_t i;
+    struct ports_range *range = NULL;
+
     assert(ports);
 
     if (beg > end) {
 		ERR("[config] Invalid range %hu - %hu", beg, end);
 		return -EINVAL;
     }
-    ports->ranges = realloc(ports->ranges, (ports->ranges_num + 1) * sizeof(*ports->ranges));
-    ports->ranges[ports->ranges_num].beginning = beg;
-    ports->ranges[ports->ranges_num].ending = end;
-    ++ports->ranges_num;
+    for (i=0; i < ports->ranges_num; ++i) {
+        range = &ports->ranges[i];
+        if (range->beginning <= beg && range->ending >= end) {
+            DBG("[config] Ports range %hu - %hu swarms new range %hu - %hu",
+                    range->beginning, range->ending, beg, end);
+            return 0;
+        }
+        if (range->beginning >= beg && range->ending <= end) {
+            DBG("[config] Ports range %hu - %hu swarmed by new range %hu - %hu",
+                    range->beginning, range->ending, beg, end);
+            range->beginning = range->ending = 0;
+            i = 0;
+        }
+        if (range->beginning <= end && end <= range->ending) {
+            DBG("[config] Ports range %hu - %hu overlaps with new range "
+                    "%hu - %hu", range->beginning, range->ending, beg, end);
+            end = range->ending;
+            range->beginning = range->ending = 0;
+            i = 0;
+        }
+        if (beg <= range->ending && range->ending <= end) {
+            DBG("[config] Ports range %hu - %hu overlaps with new range "
+                    "%hu - %hu", range->beginning, range->ending, beg, end);
+            beg = range->beginning;
+            range->beginning = range->ending = 0;
+            i = 0;
+        }
+    }
+    for (i=0; i < ports->ranges_num; ++i) {
+        range = &ports->ranges[i];
+        if (range->beginning == 0 && range->ending == 0) {
+            break;
+        }
+        range = NULL;
+    }
+    if (range == NULL) {
+        ports->ranges = realloc(ports->ranges, (ports->ranges_num + 1) * sizeof(*ports->ranges));
+        range = &ports->ranges[ports->ranges_num++];
+    }
+    range->beginning = beg;
+    range->ending = end;
+    if (beg == end) {
+        DBG("[config] Port %hu added to list.", beg);
+    } else {
+        DBG("[config] Ports range %hu - %hu added to list.", beg, end);
+    }
     return 0;
 }
 ATTR_HIDDEN
 int conf_file_read_port(const char *val, const char *beg, const char *end)
 {
     ssize_t len;
-    const char *pend;
+    char *pend;
     int ret;
 
     assert (val);
@@ -521,16 +566,16 @@ int conf_file_read_port(const char *val, const char *beg, const char *end)
 
     len = end - beg;
     if (len <= 0) {
-        ERR("[config] No value on %zu position", val - beg);
+        ERR("[config] No value on %zu position", beg - val);
         return -EINVAL;
     }
     char tmp_buf[len+1];
-    strncpy(tmp_buf, pos, len);
-    tmp_buf[len] = '\0'
+    strncpy(tmp_buf, beg, len);
+    tmp_buf[len] = '\0';
     ret = strtol(tmp_buf, &pend, 10);
     if (*pend != '\0') {
         ERR("[config] Can not recognize `%s' on %zu position", tmp_buf,
-                val - beg);
+                beg - val);
         return -EINVAL;
     }
 
@@ -542,59 +587,95 @@ int conf_file_set_port_list(const char *val, struct configuration *config)
 	int ret;
     const char *comma_pos, *hyphen_pos, *pos = val;
     unsigned short beg, end;
+    size_t vlen;
+    size_t i, j;
 
     assert(val);
     assert(config);
 
+    vlen = strlen(val);
     comma_pos = strchr(pos, ',');
     hyphen_pos = strchr(pos, '-');
 
     while (pos != NULL && *pos != '\0') {
         if (pos == comma_pos || pos == hyphen_pos) {
             ERR("[config] Invalid %s value for %s: unexpected `%c' on "
-                    "%zu position", val, conf_port_list_str, *pos, val - pos);
+                    "%zu position", val, conf_port_list_str, *pos, pos - val);
             return -EINVAL;
         }
-        if (comma_pos != NULL && comma_pos < hyphen_pos) {
+        if (comma_pos != NULL && (comma_pos < hyphen_pos || hyphen_pos == NULL)) {
             ret = conf_file_read_port(val, pos, comma_pos);
-            if (ret < 0) {
+            if (ret <= 0) {
                 ERR("[config] Invalid %s value for %s", val, conf_port_list_str);
-                return ret;
+                return -EINVAL;
             }
             beg = end = ret;
             pos = comma_pos + 1;
-            comma_pos = strchr(pos, ',');
+            if (pos < val + vlen) {
+                comma_pos = strchr(pos, ',');
+            } else {
+                pos = NULL;
+            }
         } else if (hyphen_pos != NULL){
             if (comma_pos == NULL) {
-                comma_pos = val + strlen(val);
+                comma_pos = val + vlen;
             }
             ret = conf_file_read_port(val, pos, hyphen_pos);
-            if (ret < 0) {
+            if (ret <= 0) {
                 ERR("[config] Invalid %s value for %s", val, conf_port_list_str);
-                return ret;
+                return -EINVAL;
             }
             beg = ret;
             ret = conf_file_read_port(val, hyphen_pos + 1, comma_pos);
-            if (ret < 0) {
+            if (ret <= 0) {
                 ERR("[config] Invalid %s value for %s", val, conf_port_list_str);
-                return ret;
+                return -EINVAL;
             }
             end = ret;
             pos = comma_pos + 1;
-            comma_pos = strchr(pos, ',');
-            hyphen_pos = strchr(pos, '-');
+            if (pos < val + vlen) {
+                comma_pos = strchr(pos, ',');
+                hyphen_pos = strchr(pos, '-');
+            } else {
+                pos = NULL;
+            }
         } else {
-            ret = conf_file_read_port(val, pos, val + strlen[val]);
-            if (ret < 0) {
+            ret = conf_file_read_port(val, pos, val + vlen);
+            if (ret <= 0) {
                 ERR("[config] Invalid %s value for %s", val, conf_port_list_str);
-                return ret;
+                return -EINVAL;
             }
             beg = end = ret;
+            pos = NULL;
         }
         ret = conf_file_add_ports_range(&config->ports, beg, end);
         if (ret < 0) {
             ERR("[config] Invalid %s value for %s", val, conf_port_list_str);
             return ret;
+        }
+    }
+    if (config->ports.ranges_num > 0) {
+        DBG("[config] Ports ranges configured for %s %s",
+               conf_port_list_str, val);
+    } else {
+        DBG("[config] No ports ranges configured for %s %s",
+               conf_port_list_str, val);
+    }
+    for (i=0; i<config->ports.ranges_num; ++i) {
+        beg = config->ports.ranges[i].beginning;
+        end = config->ports.ranges[i].ending;
+        if ( beg == 0 && end == 0) {
+            for (j=i; j<config->ports.ranges_num - 1; ++j) {
+                config->ports.ranges[j].beginning =
+                    config->ports.ranges[j+1].beginning;
+                config->ports.ranges[j].ending =
+                    config->ports.ranges[j+1].ending;
+            }
+            --config->ports.ranges_num;
+        } else if (beg == end) {
+            DBG("[config]   %zu: %hu", i + 1, beg);
+        } else {
+            DBG("[config]   %zu: %hu - %hu", i + 1, beg, end);
         }
     }
     return 0;
