@@ -40,6 +40,8 @@ static const char *conf_socks5_pass_str = "SOCKS5Password";
 static const char *conf_allow_inbound_str = "AllowInbound";
 static const char *conf_allow_outbound_localhost_str = "AllowOutboundLocalhost";
 static const char *conf_isolate_pid_str = "IsolatePID";
+static const char *conf_port_list_type_str = "PotsType";
+static const char *conf_port_list_str = "PotsList";
 
 /*
  * Once this value reaches 2, it means both user and password for a SOCKS5
@@ -176,6 +178,16 @@ static int parse_config_line(const char *line, struct configuration *config)
 		}
 	} else if (!strcmp(tokens[0], conf_isolate_pid_str)) {
 		ret = conf_file_set_isolate_pid(tokens[1], config);
+		if (ret < 0) {
+			goto error;
+		}
+	} else if (!strcmp(tokens[0], conf_port_list_type_str)) {
+		ret = conf_file_set_port_list_type(tokens[1], config);
+		if (ret < 0) {
+			goto error;
+		}
+	} else if (!strcmp(tokens[0], conf_port_list_str)) {
+		ret = conf_file_set_port_list(tokens[1], config);
 		if (ret < 0) {
 			goto error;
 		}
@@ -454,6 +466,138 @@ int conf_file_set_isolate_pid(const char *val, struct configuration *config)
 	}
 
 	return ret;
+}
+ATTR_HIDDEN
+int conf_file_set_port_list_type(const char *val, struct configuration *config)
+{
+	int ret;
+
+    assert(val);
+    assert(config);
+
+	ret = atoi(val);
+	if (ret == 0) {
+		config->ports.type = 0;
+		DBG("[config] Ports list disabled.");
+    } else if (ret == 1)
+		config->ports.type = 1;
+		DBG("[config] Ports white list enabled.");
+    } else if (ret == 2)
+		config->ports.type = 2;
+		DBG("[config] Ports black list enabled.");
+	} else {
+		ERR("[config] Invalid %s value for %s", val,
+				conf_port_list_type_str);
+		ret = -EINVAL;
+	}
+    return ret;
+}
+
+ATTR_HIDDEN
+int conf_file_add_ports_range(struct ports_list *ports, unsigned short beg, unsigned short end)
+{
+    assert(ports);
+
+    if (beg > end) {
+		ERR("[config] Invalid range %hu - %hu", beg, end);
+		return -EINVAL;
+    }
+    ports->ranges = realloc(ports->ranges, (ports->ranges_num + 1) * sizeof(*ports->ranges));
+    ports->ranges[ports->ranges_num].beginning = beg;
+    ports->ranges[ports->ranges_num].ending = end;
+    ++ports->ranges_num;
+    return 0;
+}
+ATTR_HIDDEN
+int conf_file_read_port(const char *val, const char *beg, const char *end)
+{
+    ssize_t len;
+    const char *pend;
+    int ret;
+
+    assert (val);
+    assert (beg);
+    assert (end);
+
+    len = end - beg;
+    if (len <= 0) {
+        ERR("[config] No value on %zu position", val - beg);
+        return -EINVAL;
+    }
+    char tmp_buf[len+1];
+    strncpy(tmp_buf, pos, len);
+    tmp_buf[len] = '\0'
+    ret = strtol(tmp_buf, &pend, 10);
+    if (*pend != '\0') {
+        ERR("[config] Can not recognize `%s' on %zu position", tmp_buf,
+                val - beg);
+        return -EINVAL;
+    }
+
+    return ret;
+}
+ATTR_HIDDEN
+int conf_file_set_port_list(const char *val, struct configuration *config)
+{
+	int ret;
+    const char *comma_pos, *hyphen_pos, *pos = val;
+    unsigned short beg, end;
+
+    assert(val);
+    assert(config);
+
+    comma_pos = strchr(pos, ',');
+    hyphen_pos = strchr(pos, '-');
+
+    while (pos != NULL && *pos != '\0') {
+        if (pos == comma_pos || pos == hyphen_pos) {
+            ERR("[config] Invalid %s value for %s: unexpected `%c' on "
+                    "%zu position", val, conf_port_list_str, *pos, val - pos);
+            return -EINVAL;
+        }
+        if (comma_pos != NULL && comma_pos < hyphen_pos) {
+            ret = conf_file_read_port(val, pos, comma_pos);
+            if (ret < 0) {
+                ERR("[config] Invalid %s value for %s", val, conf_port_list_str);
+                return ret;
+            }
+            beg = end = ret;
+            pos = comma_pos + 1;
+            comma_pos = strchr(pos, ',');
+        } else if (hyphen_pos != NULL){
+            if (comma_pos == NULL) {
+                comma_pos = val + strlen(val);
+            }
+            ret = conf_file_read_port(val, pos, hyphen_pos);
+            if (ret < 0) {
+                ERR("[config] Invalid %s value for %s", val, conf_port_list_str);
+                return ret;
+            }
+            beg = ret;
+            ret = conf_file_read_port(val, hyphen_pos + 1, comma_pos);
+            if (ret < 0) {
+                ERR("[config] Invalid %s value for %s", val, conf_port_list_str);
+                return ret;
+            }
+            end = ret;
+            pos = comma_pos + 1;
+            comma_pos = strchr(pos, ',');
+            hyphen_pos = strchr(pos, '-');
+        } else {
+            ret = conf_file_read_port(val, pos, val + strlen[val]);
+            if (ret < 0) {
+                ERR("[config] Invalid %s value for %s", val, conf_port_list_str);
+                return ret;
+            }
+            beg = end = ret;
+        }
+        ret = conf_file_add_ports_range(&config->ports, beg, end);
+        if (ret < 0) {
+            ERR("[config] Invalid %s value for %s", val, conf_port_list_str);
+            return ret;
+        }
+    }
+    return 0;
 }
 
 /*

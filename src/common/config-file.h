@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2000-2008 - Shaun Clowes <delius@progsoc.org> 
+ * Copyright (C) 2000-2008 - Shaun Clowes <delius@progsoc.org>
  * 				 2008-2011 - Robert Hogan <robert@roberthogan.net>
  * 				 	  2013 - David Goulet <dgoulet@ev0ke.net>
  *
@@ -52,6 +52,17 @@ struct config_file {
 	char socks5_password[SOCKS5_PASSWORD_LEN];
 };
 
+struct ports_range {
+    unsigned short beginning;
+    unsigned short ending;
+};
+
+struct ports_list {
+    unsigned int type;
+    size_t ranges_num;
+    struct ports_range *ranges;
+};
+
 /*
  * Structure representing a complete parsed file.
  */
@@ -90,6 +101,8 @@ struct configuration {
 	 * username or password.
 	 */
 	unsigned int isolate_pid:1;
+
+    struct ports_list ports;
 };
 
 int config_file_read(const char *filename, struct configuration *config);
