@@ -62,7 +62,36 @@ static void test_config_file_read_valid(void)
 		config.conf_file.tor_port == DEFAULT_TOR_PORT &&
 		strcmp(config.conf_file.tor_address, DEFAULT_TOR_ADDRESS) == 0 &&
 		strcmp(buf, DEFAULT_ONION_ADDR_RANGE) == 0 &&
-		config.conf_file.onion_mask == strtoul(DEFAULT_ONION_ADDR_MASK, NULL, 0),
+		config.conf_file.onion_mask == strtoul(DEFAULT_ONION_ADDR_MASK, NULL, 0) &&
+        config.conf_file.ports.type == 1 &&
+        config.conf_file.ports.ranges_num == 9 &&
+        config.conf_file.ports.ranges[0].proto == PORT_BOTH &&
+            config.conf_file.ports.ranges[0].beginning == 1 &&
+            config.conf_file.ports.ranges[0].ending == 1 &&
+        config.conf_file.ports.ranges[1].proto == PORT_BOTH &&
+            config.conf_file.ports.ranges[1].beginning == 10 &&
+            config.conf_file.ports.ranges[1].ending == 100 &&
+        config.conf_file.ports.ranges[2].proto == PORT_BOTH &&
+            config.conf_file.ports.ranges[2].beginning == 300 &&
+            config.conf_file.ports.ranges[2].ending == 4000 &&
+        config.conf_file.ports.ranges[3].proto == PORT_UDP &&
+            config.conf_file.ports.ranges[3].beginning == 1 &&
+            config.conf_file.ports.ranges[3].ending == 1 &&
+        config.conf_file.ports.ranges[4].proto == PORT_UDP &&
+            config.conf_file.ports.ranges[4].beginning == 20 &&
+            config.conf_file.ports.ranges[4].ending == 30 &&
+        config.conf_file.ports.ranges[5].proto == PORT_UDP &&
+            config.conf_file.ports.ranges[5].beginning == 400 &&
+            config.conf_file.ports.ranges[5].ending == 400 &&
+        config.conf_file.ports.ranges[6].proto == PORT_TCP &&
+            config.conf_file.ports.ranges[6].beginning == 20 &&
+            config.conf_file.ports.ranges[6].ending == 20 &&
+        config.conf_file.ports.ranges[7].proto == PORT_TCP &&
+            config.conf_file.ports.ranges[7].beginning == 40 &&
+            config.conf_file.ports.ranges[7].ending == 40 &&
+        config.conf_file.ports.ranges[8].proto == PORT_TCP &&
+            config.conf_file.ports.ranges[8].beginning == 80 &&
+            config.conf_file.ports.ranges[8].ending == 80,
 		"Read valid config file");
 }
 

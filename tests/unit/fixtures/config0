@@ -17,3 +17,8 @@ TorPort 9050
 # ever need to actually connect to. This is similar to the MapAddress feature
 # of the main tor daemon.
 OnionAddrRange 127.42.42.0/24
+
+PortsType 1
+PortsList 1,10-100,300-4000,400-1000
+PortsListUDP 1,20-30,400
+PortsListTCP 20,40,80,

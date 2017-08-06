@@ -25,6 +25,23 @@
 #include "connection.h"
 #include "socks5.h"
 
+
+struct ports_range {
+    unsigned short beginning;
+    unsigned short ending;
+    enum {
+        PORT_TCP = 1,
+        PORT_UDP = 2,
+        PORT_BOTH = PORT_TCP | PORT_UDP,
+    } proto;
+};
+
+struct ports_list {
+    unsigned int type;
+    size_t ranges_num;
+    struct ports_range *ranges;
+};
+
 /*
  * Represent the values in a configuration file (torsocks.conf). Basically,
  * this is the data structure of a parsed config file.
@@ -50,17 +67,8 @@ struct config_file {
 	 */
 	char socks5_username[SOCKS5_USERNAME_LEN];
 	char socks5_password[SOCKS5_PASSWORD_LEN];
-};
 
-struct ports_range {
-    unsigned short beginning;
-    unsigned short ending;
-};
-
-struct ports_list {
-    unsigned int type;
-    size_t ranges_num;
-    struct ports_range *ranges;
+    struct ports_list ports;
 };
 
 /*
@@ -101,8 +109,6 @@ struct configuration {
 	 * username or password.
 	 */
 	unsigned int isolate_pid:1;
-
-    struct ports_list ports;
 };
 
 int config_file_read(const char *filename, struct configuration *config);
@@ -118,7 +124,8 @@ int conf_file_set_allow_outbound_localhost(const char *val, struct
 		configuration *config);
 int conf_file_set_isolate_pid(const char *val, struct configuration *config);
 int conf_file_set_port_list_type(const char *val, struct configuration *config);
-int conf_file_set_port_list(const char *val, struct configuration *config);
+int conf_file_set_port_list(const char *val, int proto, const char *field,
+        struct configuration *config);
 
 int conf_apply_socks_auth(struct configuration *config);
 
