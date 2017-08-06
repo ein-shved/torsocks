@@ -511,7 +511,7 @@ int conf_file_set_port_list_type(const char *val, struct configuration *config)
 
 ATTR_HIDDEN
 int conf_file_add_ports_range(struct ports_list *ports,
-        unsigned short beg, unsigned short end, int proto)
+        in_port_t beg, in_port_t end, int proto)
 {
     size_t i;
     struct ports_range *range = NULL;
@@ -614,7 +614,7 @@ int conf_file_set_port_list(const char *val, int proto, const char *field,
 {
 	int ret;
     const char *comma_pos, *hyphen_pos, *pos = val;
-    unsigned short beg, end;
+    in_port_t beg, end;
     size_t vlen;
     size_t i, j;
 

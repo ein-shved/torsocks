@@ -27,8 +27,8 @@
 
 
 struct ports_range {
-    unsigned short beginning;
-    unsigned short ending;
+    in_port_t beginning;
+    in_port_t ending;
     enum {
         PORT_TCP = 1,
         PORT_UDP = 2,
