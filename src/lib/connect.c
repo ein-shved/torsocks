@@ -47,8 +47,10 @@ TSOCKS_LIBC_DECL(connect, LIBC_CONNECT_RET_TYPE, LIBC_CONNECT_SIG)
  */
 int tsocks_validate_socket(int sockfd, const struct sockaddr *addr)
 {
-	int ret, sock_type;
+	int ret, sock_type, port, match = 0;
 	socklen_t optlen;
+    size_t i;
+    struct ports_range *range;
 
 	if (!addr) {
 		/* Go directly to libc, connect() will handle a NULL value. */
@@ -72,6 +74,26 @@ int tsocks_validate_socket(int sockfd, const struct sockaddr *addr)
 		errno = EBADF;
 		goto error;
 	}
+
+    port = utils_get_port_from_addr(addr);
+    if (port > 0 && tsocks_config.config_file.ports.type != 0)
+        for (i = 0; i<tsocks_config.config_file.ports.ranges_num; ++i)
+    {
+        range = &tsocks_config.config_file.ports.ranges[i];
+        if ((IS_SOCK_STREAM(sock_type) && (range->proto & PROTO_TCP)) ||
+                (!IS_SOCK_STREAM(sock_type) && (range->proto & PROTO_UDP)))
+        {
+            if (range->beginning <= port && port < = range->ending) {
+                match = 1;
+                break;
+            }
+        }
+    }
+    if ((tsocks_config.config_file.ports.type == 1 && !!match) ||
+         (tsocks_config.config_file.ports.type == 2 && match))
+    {
+        goto libc_call;
+    }
 
 	DBG("[connect] Socket family %s and type %d",
 			addr->sa_family == AF_INET ? "AF_INET" : "AF_INET6", sock_type);
